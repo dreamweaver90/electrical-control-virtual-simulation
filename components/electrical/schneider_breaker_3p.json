@@ -133,8 +133,8 @@
       "default": "",
       "adjustable": true,
       "display": {
-        "x": 120,
-        "y": 200,
+        "x": 81,
+        "y": 244,
         "fontSize": 16,
         "class": "yellow-plate"
       }

@@ -113,8 +113,8 @@
       "default": "",
       "adjustable": true,
       "display": {
-        "x": 90,
-        "y": 115,
+        "x": 61,
+        "y": 127,
         "fontSize": 16,
         "class": "yellow-plate"
       }

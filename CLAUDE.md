@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 运行方式
 
 ```bash
-cd "F:\code\AIcoding\13_虚拟接线\code\仿真系统"
+# 进入项目文件夹（路径按各自实际位置）
 python -m http.server 8000
 # 浏览器打开 http://localhost:8000/index.html
 ```
