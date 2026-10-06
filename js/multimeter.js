@@ -44,6 +44,7 @@ export class Multimeter {
     if (panelEl && this._onMD) panelEl.removeEventListener('mousedown', this._onMD, true);
     // 拖拽中关闭万用表：清理残留的禁用光标状态
     document.body.classList.remove('panel-dragging');
+    if (G.app && G.app.hideTermTip) G.app.hideTermTip('probe');   // 关闭万用表：撤掉笔尖处的端子提示
   }
 
   setMode(m) { this.mode = m; this._setModeUI(m); if (m !== 'resistance') this._stopBeep(); this._refresh(); }
@@ -93,15 +94,9 @@ export class Multimeter {
   }
 
   /* ---- 拖动：笔尖 (x+tipX, y+tipY) 用于端子检测（panel 逻辑坐标） ---- */
-  /** 鼠标事件 → 面板逻辑坐标（缩放/滚动适配） */
+  /** 鼠标事件 → 面板逻辑坐标（换算统一走 PanelManager，与导线/端子命中同一套） */
   _clientToPanel(e) {
-    const panelEl = G.panel && G.panel.panelEl;
-    const rect = panelEl.getBoundingClientRect();
-    const z = (G.panel && G.panel.zoom) || 1;
-    return {
-      x: (e.clientX - rect.left) / z + panelEl.scrollLeft / z,
-      y: (e.clientY - rect.top)  / z + panelEl.scrollTop  / z,
-    };
+    return G.panel.clientToPanel(e.clientX, e.clientY);
   }
 
   _startDrag() {
@@ -126,6 +121,7 @@ export class Multimeter {
       const y = pt.y - this._offY;
       const p = this[this._drag]; p.x = x; p.y = y;   // 逻辑坐标（吸附检测用）
       if (p.el) { p.el.style.left = x+'px'; p.el.style.top = y+'px'; }   // panel 内直接定位，随面板缩放
+      this._updateTermTip(this._drag);   // 拖动中：笔尖处实时显示端子 tip
     };
     document.addEventListener('mousemove', this._onMM);
 
@@ -143,21 +139,25 @@ export class Multimeter {
         p.x = tp.x - p.tipX; p.y = tp.y - p.tipY;
         if (p.el) { p.el.style.left = p.x+'px'; p.el.style.top = p.y+'px'; }
       } else { p.term = null; }
+      this._updateTermTip(this._drag);   // 吸附后：笔尖处显示端子 tip
       this._drag = null; this._refresh();
     };
     document.addEventListener('mouseup', this._onMU);
   }
 
+  /** 笔尖命中的端子（几何判定，含接线已满端子；与悬停提示、导线命中同一套换算与命中规则） */
   _findTerm(tipX, tipY) {
-    let b = null, bd = 1e9;
-    for (const i of G.panel.instances.values()) {
-      for (const t of i.terminals) {
-        if (t.isHidden) continue;
-        const tp = t.panelPos(), d = Math.hypot(tipX - tp.x, tipY - tp.y);
-        if (d < t.hitRadius && d < bd) { bd = d; b = t; }
-      }
-    }
-    return b;
+    return G.panel.termAtPanel(tipX, tipY);
+  }
+
+  /** 笔尖处端子提示浮层：笔尖落在端子上 → 在笔尖位置显示该端子的 tip；否则隐藏 */
+  _updateTermTip(key) {
+    const p = this[key];
+    if (!p || !G.app || !G.app.showTermTip) return;
+    const c = G.panel.panelToClient(p.x + p.tipX, p.y + p.tipY);   // 笔尖 → client 坐标
+    const t = G.panel.termAtClient(c.x, c.y);
+    if (t) G.app.showTermTip(t, c.x, c.y, 'probe');
+    else G.app.hideTermTip('probe');
   }
 
   /* ---- 刷新 ---- */

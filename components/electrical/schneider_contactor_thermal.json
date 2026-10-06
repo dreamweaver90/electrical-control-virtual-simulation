@@ -449,6 +449,9 @@
             ]
           ],
           "resistance": 0.002,
+          "tripKey": "tripped",
+          "setting": "heaterSetting",
+          "tripDelay": "tripDelay",
           "fault": {
             "level": 10
           }
@@ -461,6 +464,7 @@
       "id": "reset",
       "event": "click",
       "action": "reset",
+      "state": "tripped",
       "tips": "点击复位热继电器",
       "x": 144,
       "y": 288,

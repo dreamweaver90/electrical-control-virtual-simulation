@@ -24,6 +24,8 @@ export class App {
     this._pickedWireId = null; this._pickedTermId = null;
     this.undoMgr = null;           // 撤回/重做栈（init 按主配置 undo.maxSteps 创建）
     this._restoring = false;       // 撤回恢复中：抑制埋点（导线创建/放置不重复记快照）
+    this._termTipEl = null;        // 端子提示浮层（懒创建；悬停 / 万用表笔尖共用）
+    this._termTipSource = null;    // 当前浮层来源：'hover' | 'probe'（避免两个来源互相误关）
     this.scenes = [];   // 场景组合配置（system_config_v3.json 顶层 scenes）
   }
 
@@ -150,11 +152,14 @@ export class App {
     document.getElementById('btnRedo')?.addEventListener('click', () => this.redo());
     this._syncUndoUI();   // 初始禁用（栈空）
     document.addEventListener('keydown', e => {
-      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z') return;
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const k = e.key.toLowerCase();
+      if (k !== 'z' && k !== 'y') return;
       const t = e.target;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;   // 输入框内不拦截
       e.preventDefault();
-      if (e.shiftKey) this.redo(); else this.undo();
+      // 撤回 = Ctrl+Z；恢复（取消撤回）= Ctrl+Y（Ctrl+Shift+Z 保留为恢复的兼容别名）
+      if (k === 'y' || e.shiftKey) this.redo(); else this.undo();
     });
 
     // 工程导出/导入（project-io：快照下载 / 文件上传 → 统一布局引擎）
@@ -186,6 +191,7 @@ export class App {
       if (document.body.classList.contains('panel-dragging')) {   // 拖动悬浮面板（万用表/排故）：禁用导线悬停光标
         if (this._wireHoverCard) { this._wireHoverCard.style.cursor = ''; this._wireHoverCard = null; }
         pw.style.cursor = '';
+        this.hideTermTip('hover');
         return;
       }
       const r = this.wiring.checkWireHover(e.clientX, e.clientY);
@@ -194,11 +200,21 @@ export class App {
       const card = e.target.closest('.component-card');
       if (this._wireHoverCard && this._wireHoverCard !== card) { this._wireHoverCard.style.cursor = ''; this._wireHoverCard = null; }
       if (card && r && card.classList.contains('wired')) { card.style.cursor = 'pointer'; this._wireHoverCard = card; }
+
+      // ★ 端子提示：连线优先（命中导线/气管时不显示端子 tip）；万用表打开时由笔尖驱动，悬停不抢占
+      if (this.multimeter && this.multimeter.active) return;
+      if (r) { this.hideTermTip('hover'); return; }
+      const t = this.panel.termAtClient(e.clientX, e.clientY);   // 几何命中（含接线已满端子）
+      if (t) this.showTermTip(t, e.clientX, e.clientY, 'hover');
+      else this.hideTermTip('hover');
     });
     pw.addEventListener('mouseleave', () => {
       pw.style.cursor = '';
       if (this._wireHoverCard) { this._wireHoverCard.style.cursor = ''; this._wireHoverCard = null; }
+      this.hideTermTip('hover');
     });
+    pw.addEventListener('scroll', () => this.hideTermTip(), { passive: true });   // 滚动后浮层位置失效
+    pw.addEventListener('wheel',  () => this.hideTermTip(), { passive: true });   // 缩放后浮层位置失效
     pw.addEventListener('dblclick', e => {
       if (this._isLocked()) return;
       // ① 导线/气管上双击 → 优先删除导线（浮于器件上也删线）
@@ -299,6 +315,7 @@ export class App {
   _closeMeter() {
     if (this.multimeter) { this.multimeter.destroy(); this.multimeter = null; }
     document.getElementById('meterPanel').style.display = 'none';
+    this.hideTermTip();
   }
 
   /** 退出排故模式（清除故障 + 恢复按钮/面板/锁定态） */
@@ -759,7 +776,7 @@ export class App {
   }
   onInstanceAdded(i) { if (i.definition.isSingleton()) this.library.updateSingleton(i.definition.id, true); this._sum(); }
   onInstanceRemoved(i) { if (i.definition.isSingleton()) this.library.updateSingleton(i.definition.id, false); this._sum(); }
-  onAllCleared() { for (const d of this.definitions.values()) { if (d.isSingleton()) this.library.updateSingleton(d.id, false); } this._sum(); }
+  onAllCleared() { for (const d of this.definitions.values()) { if (d.isSingleton()) this.library.updateSingleton(d.id, false); } this._sum(); this.hideTermTip(); }
 
   removeComponent(iid, skipConfirm) {
     if (this._isLocked()) { this.showToast('当前模式下禁止删除器件', 'warn'); return; }
@@ -767,12 +784,58 @@ export class App {
     if (inst.hasWires) { this.showToast('已接线器件不可删除', 'warn'); return; }
     if (!skipConfirm && !confirm('确定删除「' + inst.displayName() + '」？')) return;
     this._pushUndo();   // 撤回：删除前记快照
+    this.hideTermTip();   // 提示指向的器件即将消失
     this.panel.removeInstance(iid);
   }
 
   _sum() { const c = this.panel.instances.size; const t = {}; for (const i of this.panel.instances.values()) t[i.definition.name] = (t[i.definition.name] || 0) + 1; const p = Object.entries(t).map(([k, v]) => k + '×' + v).join(', '); document.getElementById('statusText').textContent = c > 0 ? '已放置 ' + c + ' 个: ' + p : '就绪'; }
   setStatus(m) { document.getElementById('statusText').textContent = m; }
   showToast(m, type) { const el = document.createElement('div'); el.className = 'toast ' + (type || 'info'); el.textContent = m; document.body.appendChild(el); setTimeout(() => el.remove(), 2200); }
+
+  /* ---- 端子提示浮层（鼠标悬停 / 万用表笔尖共用；fixed 定位，不随面板缩放） ---- */
+
+  _ensureTermTip() {
+    if (this._termTipEl && this._termTipEl.isConnected) return this._termTipEl;
+    const el = document.createElement('div');
+    el.id = 'termTip';
+    document.body.appendChild(el);
+    this._termTipEl = el;
+    return el;
+  }
+
+  /**
+   * 显示端子提示：文本 = 器件名.端子提示（tip 缺省用端子 id，与排故/告警文案一致）。
+   * source：'hover'（鼠标悬停，跟随鼠标）| 'probe'（万用表笔尖处）。
+   * 定位在光标右下 + 越界翻转（右/下边不够时翻到左/上）。
+   */
+  showTermTip(term, clientX, clientY, source) {
+    if (!term) { this.hideTermTip(source); return; }
+    const el = this._ensureTermTip();
+    const text = term.parentInst.displayName() + '.' + (term.tip || term.id);
+    // 尺寸只在文本变化时量一次（mousemove 高频路径避免每帧强制布局）
+    let w = this._termTipW || 0, h = this._termTipH || 0;
+    if (el.textContent !== text || !w || !h) {
+      el.textContent = text;
+      el.style.display = 'block';
+      w = this._termTipW = el.offsetWidth;
+      h = this._termTipH = el.offsetHeight;
+    } else if (el.style.display !== 'block') {
+      el.style.display = 'block';
+    }
+    let x = clientX + 12, y = clientY + 16;
+    if (x + w > window.innerWidth  - 8) x = clientX - w - 12;
+    if (y + h > window.innerHeight - 8) y = clientY - h - 16;
+    el.style.left = Math.max(4, x) + 'px';
+    el.style.top  = Math.max(4, y) + 'px';
+    this._termTipSource = source || null;
+  }
+
+  /** 隐藏端子提示；传 source 时只隐藏该来源的浮层（另一来源正在显示则不误关） */
+  hideTermTip(source) {
+    if (source && this._termTipSource && this._termTipSource !== source) return;
+    if (this._termTipEl) this._termTipEl.style.display = 'none';
+    this._termTipSource = null;
+  }
 }
 
 window.addEventListener('DOMContentLoaded', () => { new App().init(); });

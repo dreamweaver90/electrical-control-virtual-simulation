@@ -31,7 +31,7 @@ python -m http.server 8000
 2. 点端子→点端子接线（端子有接线数上限；带电/带压端子默认禁止接线）→ 右键导线设线标、颜色、显示位置；
 3. 点开关/按钮/热区，或右键改参数 → 仿真每 50ms 跑一次：触点按时序动作、线圈得电、电机启停与转向、气缸伸缩、气压传播；
 4. 看仪表读数（电压表/电流表/电能表/万用表）、看告警栈提示、看器件动画与文字显示；
-5. 结构操作可撤回/重做（Ctrl+Z / Ctrl+Shift+Z）；参数与运行状态不撤回；
+5. 结构操作可撤回/重做（Ctrl+Z / Ctrl+Y）；参数与运行状态不撤回；
 6. 导出工程 JSON 存档或分享；场景文件放进 `scenes/` 并在主配置登记即可在库中一键加载；
 7. **排故练习**：进入排故模式（选难度）→ 系统在已接线处随机注入故障 → 学生用万用表测量排查 → 点击故障点提交判定（对/错都记入面板）。
 
@@ -50,7 +50,7 @@ python -m http.server 8000
      - **导入导出**：collectSnapshot 写 `w.media`；applyLayout 删除气路跳过分支，`_createWire` 传颜色覆盖，导入校验两端端子介质一致；场景示例 `pneumatic_demo`（工业机器人中级测试：气源-调压阀-电磁阀模块-执行模块 + 磁性传感器-指示灯 + 按钮模块/SMPS 控制回路）；
      - **导线优先交互**（导线/气管浮于器件上时）：右键 → 优先线标面板（卡片 contextmenu 先 `checkWireHover`）、双击 → 命中导线/气管删线、否则落在器件卡片删除器件（见「面板交互」）、mousedown → 不启动器件拖动（_bindDrag 先查 `checkWireHover`）、悬停 → 不显示器件的 grab 小手（面板 mousemove 命中导线时内联 cursor:pointer 覆盖 `.wired` 的 grab，mouseleave 恢复）；
      - **隐藏连接线开关**（工具栏「显示连接线」iOS 开关，位于自动敷设开关右侧，默认开）：纯视图状态 `panel.hideWires`——只跳过 canvas 绘制（`_redrawWires` clearRect 后 return）与悬停交互（`checkWireHover` 返回 null），**连接关系/仿真/导出照常**；不持久化（刷新恢复显示）；排故模式强制显示（`_applyWireVisibility`：进入排故强制显示、退出恢复开关设置）；
-     - **撤回/重做**（工具栏 ↶/↷ + Ctrl+Z / Ctrl+Shift+Z，快照式 `js/undo.js` UndoManager + lcsAlign）：**结构操作可撤回**（接线/删线/线标/器件放置删除拖动（拖动按下记、未移动丢弃）/清除全部/场景与工程导入），**参数与运行状态不撤回**——恢复时 LCS 按器件 id 序列对齐当前与快照组件：存活实例保持当前 params（`applyLayout(layoutDef, {overrideParams, bindIdMap})`）、被删器件用快照 params、bind 引用经 `_rewriteBindIds` 重映射到新实例 id（目标被删置 null）；快照 = `collectSnapshot()`（空盘 null = 撤回即清盘）；容量 `undo.maxSteps`（主配置，缺省 50）；新操作清空 redo；恢复期间 `app._restoring` 抑制接线/拖动重复记快照；参数面板/开关点击/排故/万用表不记快照；
+     - **撤回/重做**（工具栏 ↶/↷ + Ctrl+Z / Ctrl+Y，快照式 `js/undo.js` UndoManager + lcsAlign）：**结构操作可撤回**（接线/删线/线标/器件放置删除拖动（拖动按下记、未移动丢弃）/清除全部/场景与工程导入），**参数与运行状态不撤回**——恢复时 LCS 按器件 id 序列对齐当前与快照组件：存活实例保持当前 params（`applyLayout(layoutDef, {overrideParams, bindIdMap})`）、被删器件用快照 params、bind 引用经 `_rewriteBindIds` 重映射到新实例 id（目标被删置 null）；快照 = `collectSnapshot()`（空盘 null = 撤回即清盘）；容量 `undo.maxSteps`（主配置，缺省 50）；新操作清空 redo；恢复期间 `app._restoring` 抑制接线/拖动重复记快照；参数面板/开关点击/排故/万用表不记快照；
      - **排故**：气路永不设故障——气路配置 pneumatic 段不写 fault/faultLevel；`FaultManager.collectCandidates` **跳过气路导线（media≠electrical）与 pneumatic 条目**；电磁阀线圈 = 电气 loads 条目 fault 0（线圈断路故障候选天然生效）；排故点击忽略气管；
      - **display 扩展**：`display.scale`（数字参数显示倍率，如 position 0~1 显示行程 0~100%）；
      - **气路器件配置文件（现保留 7 种，用户指定）**：`pneumatic_source`（气源：气源.png/气源_通气.png 382×250，开关热区 (170,103) r30，出气 (380,105)，气压值 `display.when:"switch"` 通气才显示）、`pneumatic_manual_valve`（气路开关：158×150 一进一出双向，气孔 (2,96)/(156,96)）、`pressure_regulator`（调压阀：调压阀.png 196×250，黑色等腰三角指针绕 (92,185) 旋转，0→数学215°(左下)/0.5→正上/1→数学-35°(右下)，无刻度无文字）、`pneumatic_parallel`（并联模块：三组三联通互不相通，两对横连通默认断开右键可勾选）、`valve_module`（电磁阀模块 178×450=双控两位五通+单控两位五通：双控部分 coil1 得电∧进气有压→A 出气/coil2→B 出气、都失电保持、默认 A，双线圈同时得电→双位+告警栈；单控部分失电默认 A、线圈得电→B，触点 when `!en3`/`en3`；DC24V 可调）、`cylinder_double`（双作用气缸：模块宽=3/4推杆宽+本体宽，推杆底层左移动画，缩回露1/3→伸出露3/4，气口 (410.13,34.5)/(210.63,34.5)，posKey=position，target a→1/b→0，缩略图推杆气缸缩略图.png）、`execution_module`（执行模块 506×608：升降缸（断气下降 noAirTarget:0）/伸缩缸/夹紧缸三单元，夹爪绑 lift/extend/grip 三变量、执行机构绑 lift/extend，夹紧缸气孔随执行机构移动（anims terminal 同步）；气路进气端子/双向开关两端/气源出气端/调压阀出气端 `allowLiveConnect:true`（带压可接）；
@@ -136,7 +136,7 @@ python -m http.server 8000
   - **堵转**：`params.target` 绑定 relative-position 执行机构，方向顶到行程端 → `speed` 钳 0 + 阻抗走 Z_lock（6× 电流）→ 热继电器链；
   - **转速模型 `_tickSpeed`**：通电按 `accelTimeOn` 匀加速至额定（cw + / ccw −，可跨 0），断电按 `accelTimeOff` 减速至 0；dt 读主配置 `simulation.refreshIntervalMs`；
   - **派生铭牌值**（readonly 面板显示）：额定电流 = P/(√3·U·pf·η)、堵转电流 = ×lockRatio。
-- 热继电器：热元件支路电流 |I| > 整定值（params.heaterSetting）持续 tripDelay（缺省 8s）→ tripped；无电机匹配启发式；
+- 热继电器（**逐 `sensors` 条目独立**）：每组自带 `tripKey`（该组过载输出键，缺省 `tripped`）/`setting`（整定值，数值或 params 键名；回退 `params.heaterSetting`；仍无 → `Infinity` = 不判定过载）/`tripDelay`（延时秒，数值或 params 键名；回退 `params.tripDelay`，缺省 8s）→ 该组任一对 |I| > 整定值持续延时 → `params[tripKey]=true`（闭锁）；组间互不影响，共用同一 `tripKey` = 逻辑或；复位按 `zone.state` **只复位该组**（未配 `state` 的旧配置回退为复位全部组 + `tripped`）；无电机匹配启发式；
 - **整流器/变压器（功率反射）**：`input` 配置两端 |ΔU| ∈ params.inputVoltage×(1±tolerance)（可调优先）→ inputOk → working（含 switch、短路锁死）；working 时输出端子注册为源（整流器 DC / 变压器 AC 由 source.type 决定）；初级 `loads computed:"reflect"` 支路每 tick 折算 `Z_in = |V_in|²/conj(S_total)`，`S_total = S_load + S0`（励磁/待机复功率，有/无功叠加 → 功率守恒精确成立、上一级电源可测真实输入功率）；未工作 → 1GΩ 等效开路；`TransformerInstance` 与整流器完全同构零覆写；
 - 断路器触头、电流表分流为双层阻抗：结构层 0Ω、数值层小阻值支路（resistance / params.contactResistance / params.sensorResistance）。
 
@@ -146,7 +146,7 @@ python -m http.server 8000
 - **能力协议**：`capabilities.js` 注册表（CAPABILITIES：power/speed/trip）+ `capabilityViolations` 工厂校验；继承只是共享实现，能力判断只看 capabilities 声明；
 - **PowerSupplyBase**（capabilities:['power']）：`working`、`outputTerminals()`、`sourceEmf(term)`（配置 `source` 字段生成，无 id 硬编码；`params.outputVoltage` 可调优先、显式 magnitude 等比缩放）+ **功率反射折算**（`_computedLoadImpedance`（computed:"reflect" 条目）：`Z_in = |V_in|²/conj(S_total)`；`_secondaryPower`（S=ΣV·conj(I)，读 `solve.sourceCurrent`）/`_noLoadS`/`_noLoadZ`（`noLoadPowerFactor` 控制 R/X 分配）/`_minInputZ` 钳位；未工作 → 1GΩ 开路）；
 - **AcPowerInstance**：scan 恒 working；**RectifierInstance**：`input` 两端 |ΔU| ∈ params.inputVoltage×(1±tolerance)（可调优先，**严格检查不满足不带负载**）→ working（含 switch/short_circuit 锁死）+ fuse 热区复位；**TransformerInstance**：与整流器完全同构零覆写（次级 AC 由 `source.type:"ac"` 表达，初级 reflect 折算支路）；
-- **CoilDeviceInstance**：loads 条目 |U| 滞回判定（非 computed 条目）+ ton/tof 状态机 + 热继电器（sensors 电流 > 整定值 → tripDelay → tripped）；触点闭合全部由配置 when 驱动，不覆盖 closedContactPairs；
+- **CoilDeviceInstance**：loads 条目 |U| 滞回判定（非 computed 条目）+ ton/tof 状态机 + 热继电器（**逐 `sensors` 条目**：`tripKey`/`setting`/`tripDelay` → 逐组计时闭锁，复位按 `zone.state` 逐组）；触点闭合全部由配置 when 驱动，不覆盖 closedContactPairs；
 - **BreakerInstance**：状态=手动合闸（基类通用 zone.state 绑定，配置 `state:"switch"`）+ 短路跳闸（trip 能力，onShortCircuit 强制断开）；按钮/按钮组/隔离开关配置 class 直接用 `ComponentInstance`（zones 带 `state` 字段 → 基类 handleZoneAction 通用模板 toggle/on/off/press 自动写 params，触点 when 驱动）
 - **MotorInstance**（capabilities:['speed']）：3 个 computed loads 条目 = 三相绕组，运行判定读数值层相量电位（三绕组电压三相平衡 + 相序；容差/门槛为定值参数 minStartVoltage/balanceTol/phaseTol）、`_computedLoadImpedance` 双态阻抗缓存；**转速动态模型**：`_tickSpeed()` 每 tick（50ms）按匀加速更新 `params.speed`——通电（`accelTimeOn` 缺省 1s，0→额定折算加速度，**adjustable**）cw→+额定/ccw→−额定可跨 0、断电（`accelTimeOff` 缺省 3s，**adjustable**）→0，达界钳位；`getSpeed()` 返回运行时值 `params.speed`；scan 更新后调 `_syncTextLabels()` 实时刷新 `display` 转速（左上角 "1450 rpm" 整数，speed param 不可调）；**scan 顺序：先 `_tickSpeed` + `_tickSpeedRelay` 再 `super.scan`（触点求值）**——速度继电器状态键当 tick 生效，减少反接制动切断链条的级联延迟；
 - **FuseInstance**（熔断器 `fuse.js`，2P/3P，**逐相电流判定熔断**，与断路器"结构层事件"机制不同、不走 trip 能力）：scan 逐相读触头支路电流（`solve.currentOf(this, 'contact:<条目键>:<对索引>')`），|I| > `params.fuseCurrent`（缺省 30A，可调）∧ 持续 ≥ `params.fuseTime`（缺省 0.1s，可调）→ 该相熔断（状态键置 true 并**保持**，触点 `when:"!fuse_Lx"` 断开——只有短路那路熔断）；更换熔断器 = zones `action:"reset"` + `state` 键逐相复位（FuseInstance 覆写 handleZoneAction）；相配置从 contacts 条目 when 推导零额外配置；熔断视觉 = `爆炸.png` 36×36 图层 bind 熔断键（fuse_2p 139×300 两组熔丝 / fuse_3p 203×300 三组，热区 r18 居中）；
@@ -173,7 +173,8 @@ python -m http.server 8000
 
 - **删除按钮**：器件卡片右上角 ×（仅未接线时显示）；点击 → `App.removeComponent(iid, true)`（跳过确认，记撤回快照）。
 - **双击删除**：面板 dblclick——先判导线/气管（命中 → 删线）；否则落在 `.component-card` 上且目标不是端子/操作热区/删除钮/可编辑名称 → `removeComponent(iid, true)`（未接线器件等效 ×，已接线被拦截并提示）。
-- **自由布局 0 间距**：`_collides` 为纯重叠判定（无单边 gap），元件左右/上下可对称贴到相邻（0 间距）；有线槽占位宽度 = 精确 `cardW`（`_occupy/_release/_rebuildFreeSpace`），同样允许紧邻。
+- **自由布局 0 间距**：`_collides` 为纯重叠判定（无单边 gap），元件左右/上下可对称贴到相邻（0 间距）；有线槽占位宽度 = 精确 `cardW`（`_occupy/_release/_freeSpace` 重建），同样允许紧邻。
+- **端子提示浮层 `#termTip`**（悬停 / 万用表笔尖共用，`app.showTermTip/hideTermTip`）：几何命中 `PanelManager.termAtClient()`（半径 = `terminalHitRadius` 随缩放等比、跳过 `isHidden`，**不依赖 DOM 事件**——接线已满端子带 `.full`（`pointer-events:none`）也要能显示）；文案 `displayName() + '.' + (tip || id)`；连线优先（`checkWireHover` 命中时端子提示让位）；万用表打开时由笔尖驱动（`Multimeter._updateTermTip`，贴在笔尖 client 坐标）；fixed 定位随光标右下角、越界翻转，面板滚动/滚轮缩放即隐藏。坐标换算统一走 `PanelManager.clientToPanel/panelToClient`（`checkWireHover`、表笔共用）。
 - 行数/尺寸配置见「配置文件约定」`canvas.ductRows`/`canvas.freeLayout`。
 
 ## 排故（配置驱动，已实施）
@@ -192,7 +193,7 @@ python -m http.server 8000
 - **器件配置分组**：标识（`id`/`class`/`category`/`singleton`/`size`）+ `image[]`（图层及三类绑定）+ `zones`（交互热区）+ `params`（统一容器）+ `terminals`（四类端子对）+ 器件专属字段（`source`/`input`/`speedRelay`/`pneumaticSource`/`regulator`/`pneumatic.*`，经 `def.raw` 读取）；
 - **外观绑定三类**（都写在 image 条目内、都绑定 params）：`bind` 图层显隐（表达式 truthy/falsy）、`classBind` 参数值 → 元素 class、`anims` 元素动画（`source`+`map` + `move`|`rotate`|`attr`，可选 `terminal` 端子坐标同步）；参数文本叠加用 `params[].display`（含 `when` 条件显隐、`scale` 倍率）；
 - **`params`**：`{id, default, label, type, adjustable, readonly, unit, min, max, step, options, decimals, allow, display}`；面板可见 = `adjustable ∨ readonly`（`panelParams()`），写回只走 `adjustableParams()` → `onParamsChanged()`；
-- **四类端子对**：`contacts`（`when`/`closeDelay`/`openDelay`，基类时序求值器驱动）、`loads`（`computed` 钩子或 params 阻抗、`state` 得电键）、`permanent`（恒连）、`sensors`（串联测电流支路）；条目级 `fault:{level,types}`；
+- **四类端子对**：`contacts`（`when`/`closeDelay`/`openDelay`，基类时序求值器驱动）、`loads`（`computed` 钩子或 params 阻抗、`state` 得电键）、`permanent`（恒连）、`sensors`（串联测电流支路；带 `tripKey`/`setting`/`tripDelay` 时构成一组热元件，逐组过载判定）；条目级 `fault:{level,types}`；
 - **阻抗统一入口 `_branchZ(cat, e)`**：loads → `params.impedance`（数字=纯阻可调 / 对象=定值复阻抗）、DC 岛与欧姆档 → `params.dcResistance`（缺省回退实部）、sensors/contacts → 器件级 resistance params 兜底条目 `resistance`；
 - **故障**：条目 `fault:{level,types}` + 端子 `faultLevel`（导线等级取两端更严者）；难度阈值 = 主配置 `rules.faultLevels` 下标；候选只在已接线条目/导线上生成；
 - **主配置 `system_config_v3.json`**：`simulation`/`canvas`/`wireDuct`/`wiring`/`render`/`multimeter`/`rules`/`undo`/`components[]`/`scenes[]`；

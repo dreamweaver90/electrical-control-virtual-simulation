@@ -1,0 +1,264 @@
+{
+  "class": "CoilDeviceInstance",
+  "category": "继电器&接触器",
+  "singleton": false,
+  "id": "delixi_ton",
+  "name": "通电延时继电器",
+  "description": "德力西通电延时继电器，线圈电压可调整，两常开两常闭",
+  "tags": [
+    "继电器",
+    "德力西",
+    "TON"
+  ],
+  "params": [
+    {
+      "id": "coilVoltage",
+      "label": "线圈电压",
+      "type": "number",
+      "unit": "V",
+      "min": 12,
+      "max": 500,
+      "step": 1,
+      "default": 220,
+      "adjustable": true
+    },
+    {
+      "id": "coilType",
+      "label": "线圈类型",
+      "type": "select",
+      "options": [
+        { "value": "ac", "label": "交流 AC" },
+        { "value": "dc", "label": "直流 DC" }
+      ],
+      "default": "ac",
+      "adjustable": true
+    },
+    {
+      "id": "pickup",
+      "default": 0.85
+    },
+    {
+      "id": "dropout",
+      "default": 0.6
+    },
+    {
+      "id": "impedance",
+      "default": {
+        "re": 730,
+        "im": 6300
+      }
+    },
+    {
+      "id": "dcResistance",
+      "default": 550
+    },
+    {
+      "id": "delayTime",
+      "label": "延时时间",
+      "type": "number",
+      "unit": "s",
+      "min": 0.1,
+      "max": 30,
+      "step": 0.1,
+      "default": 5,
+      "adjustable": true
+    },
+    {
+      "id": "energized",
+      "default": false
+    },
+    {
+      "id": "ton_delayed",
+      "default": false
+    },
+    {
+      "id": "tof_delayed",
+      "default": false
+    },
+    {
+      "id": "name",
+      "label": "名称",
+      "type": "text",
+      "default": "",
+      "adjustable": true,
+      "display": {
+        "x": 72,
+        "y": 198,
+        "fontSize": 13,
+        "class": "yellow-plate"
+      }
+    }
+  ],
+  "terminalHitRadius": 12,
+  "size": {
+    "width": 147,
+    "height": 250
+  },
+  "image": [
+    {
+      "id": "default",
+      "x": 0,
+      "y": 0,
+      "string": "<svg xmlns='http://www.w3.org/2000/svg' width='147' height='250'><image href='images/德力西时间继电器ton.png' x='0' y='0' width='147' height='250'/></svg>"
+    },
+    {
+      "id": "up_led",
+      "x": 0,
+      "y": 0,
+      "string": "<svg xmlns='http://www.w3.org/2000/svg' width='147' height='250' viewBox='0 0 147 250'><circle cx='123' cy='93' r='6' fill='#ff4444' opacity='0.25'/><circle cx='123' cy='93' r='5' fill='#ff3333' opacity='0.45'/><circle cx='123' cy='93' r='4' fill='#ff2222'/><circle cx='123' cy='93' r='1.5' fill='#ffaaaa'/></svg>",
+      "bind": "ton_delayed"
+    },
+    {
+      "id": "on_led",
+      "x": 0,
+      "y": 0,
+      "string": "<svg xmlns='http://www.w3.org/2000/svg' width='147' height='250' viewBox='0 0 147 250'><circle cx='123' cy='169' r='6' fill='#ff4444' opacity='0.25'/><circle cx='123' cy='169' r='5' fill='#ff3333' opacity='0.45'/><circle cx='123' cy='169' r='4' fill='#ff2222'/><circle cx='123' cy='169' r='1.5' fill='#ffaaaa'/></svg>",
+      "bind": "energized"
+    },
+    {
+      "id": "needle",
+      "x": 0,
+      "y": 0,
+      "string": "<svg xmlns='http://www.w3.org/2000/svg' width='147' height='250' viewBox='0 0 147 250'><g transform='translate(71, 131)'><polygon data-bind='needle' points='-4,11 4,11 0,-44' fill='#ff0000'/></g></svg>",
+      "anims": {
+        "needle": {
+          "source": "delayTime",
+          "map": {
+            "min": 0,
+            "max": 30
+          },
+          "rotate": {
+            "center": [
+              0,
+              0
+            ],
+            "from": -135,
+            "to": 135
+          },
+          "smooth": true
+        }
+      }
+    }
+  ],
+  "zones": [
+  ],
+  "terminals": {
+    "electrical": {
+      "pins": {
+        "no1": {
+          "x": 25,
+          "y": 37,
+          "dir": "up",
+          "tip": "常开"
+        },
+        "nc1": {
+          "x": 56,
+          "y": 37,
+          "dir": "up",
+          "tip": "常闭"
+        },
+        "nc2": {
+          "x": 88,
+          "y": 37,
+          "dir": "up",
+          "tip": "常闭"
+        },
+        "no2": {
+          "x": 120,
+          "y": 37,
+          "dir": "up",
+          "tip": "常开"
+        },
+        "a1": {
+          "x": 24,
+          "y": 224,
+          "dir": "down",
+          "tip": "线圈"
+        },
+        "com1": {
+          "x": 56,
+          "y": 224,
+          "dir": "down",
+          "tip": "COM"
+        },
+        "com2": {
+          "x": 88,
+          "y": 224,
+          "dir": "down",
+          "tip": "COM"
+        },
+        "a2": {
+          "x": 120,
+          "y": 224,
+          "dir": "down",
+          "tip": "线圈"
+        }
+      },
+      "contacts": {
+        "ton_no": {
+          "pairs": [
+            [
+              "no1",
+              "com1"
+            ],
+            [
+              "no2",
+              "com2"
+            ]
+          ],
+          "when": "ton_delayed",
+          "closeDelay": 1,
+          "openDelay": 0,
+          "fault": {
+            "level": 0,
+            "types": [
+              "open",
+              "stuck"
+            ]
+          }
+        },
+        "ton_nc": {
+          "pairs": [
+            [
+              "nc1",
+              "com1"
+            ],
+            [
+              "nc2",
+              "com2"
+            ]
+          ],
+          "when": "!ton_delayed",
+          "closeDelay": 1,
+          "openDelay": 0,
+          "fault": {
+            "level": 0,
+            "types": [
+              "open",
+              "stuck"
+            ]
+          }
+        }
+      },
+      "loads": {
+        "coil1": {
+          "pins": [
+            "a1",
+            "a2"
+          ],
+          "state": "energized",
+          "tonState": "ton_delayed",
+          "tofState": "tof_delayed",
+          "fault": {
+            "level": 0,
+            "types": [
+              "open"
+            ]
+          }
+        }
+      },
+      "permanent": {},
+      "sensors": {}
+    }
+  }
+}

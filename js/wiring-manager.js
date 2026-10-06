@@ -432,10 +432,7 @@ export class WiringManager {
   /** 检测鼠标位置是否在某导线上，返回 wireId 或 null（命中阈值按线宽自适应：粗气管更容易点中） */
   checkWireHover(clientX, clientY) {
     if (G.panel && G.panel.hideWires) return null;   // 连接线隐藏：悬停/右键/双击/排故点击全部失效（看不到线不可交互）
-    const pr = G.panel.panelEl.getBoundingClientRect();
-    const z = G.panel.zoom || 1;   // 缩放适配
-    const px = (clientX - pr.left) / z + G.panel.panelEl.scrollLeft / z;
-    const py = (clientY - pr.top)  / z + G.panel.panelEl.scrollTop  / z;
+    const { x: px, y: py } = G.panel.clientToPanel(clientX, clientY);   // 缩放/滚动适配（与端子命中同一套换算）
     let found = null;
 
     for (const w of this.wires.values()) {

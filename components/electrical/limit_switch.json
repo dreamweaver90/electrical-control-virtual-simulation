@@ -21,14 +21,14 @@
       "x": 0,
       "y": 0,
       "string": "<svg xmlns='http://www.w3.org/2000/svg' width='114' height='200'><image href='images/行程开关.png' x='0' y='0' width='114' height='200'/></svg>",
-      "bind": "!actuated"
+      "bind": "!(actuated || forced)"
     },
     {
       "id": "动作",
       "x": 0,
       "y": 0,
       "string": "<svg xmlns='http://www.w3.org/2000/svg' width='114' height='200'><image href='images/行程开关_动作.png' x='0' y='0' width='114' height='200'/></svg>",
-      "bind": "actuated"
+      "bind": "actuated || forced"
     },
     {
       "id": "端子",
@@ -92,7 +92,7 @@
               "no_out"
             ]
           ],
-          "when": "actuated",
+          "when": "actuated || forced",
           "closeDelay": 1,
           "openDelay": 0,
           "fault": {
@@ -110,7 +110,7 @@
               "nc_out"
             ]
           ],
-          "when": "!actuated",
+          "when": "!(actuated || forced)",
           "closeDelay": 1,
           "openDelay": 0,
           "fault": {

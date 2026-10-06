@@ -397,6 +397,62 @@ export class PanelManager {
 
   _dropCbAt(d, x, y) { G.app && G.app.handleLibraryDropAt(d, x, y); }
 
+  /* ================================================================
+     坐标换算 & 端子命中（悬停提示 / 万用表笔尖定位共用）
+     ================================================================ */
+
+  /** client 坐标 → 面板逻辑坐标（含缩放/滚动适配） */
+  clientToPanel(clientX, clientY) {
+    const pr = this.panelEl.getBoundingClientRect();
+    const z = this.zoom || 1;
+    return {
+      x: (clientX - pr.left) / z + this.panelEl.scrollLeft / z,
+      y: (clientY - pr.top)  / z + this.panelEl.scrollTop  / z,
+    };
+  }
+
+  /** 面板逻辑坐标 → client 坐标（clientToPanel 的逆运算；表笔笔尖定位用） */
+  panelToClient(px, py) {
+    const pr = this.panelEl.getBoundingClientRect();
+    const z = this.zoom || 1;
+    return {
+      x: pr.left + (px - this.panelEl.scrollLeft / z) * z,
+      y: pr.top  + (py - this.panelEl.scrollTop  / z) * z,
+    };
+  }
+
+  /**
+   * 端子命中（client 坐标）→ 距离最近的非隐藏端子 / null。
+   * 几何判定而非 DOM 事件：接线已满的端子带 .full（pointer-events:none）收不到鼠标事件，
+   * 但仍需能显示提示、可被表笔吸附。命中半径 = 端子的 terminalHitRadius（随缩放等比）。
+   * 性能：每张卡片只取一次占位元素 rect，其余在 client 坐标里做纯算术（不逐端子调 panelPos）。
+   */
+  termAtClient(clientX, clientY) {
+    const z = this.zoom || 1;
+    let best = null, bd = Infinity;
+    for (const inst of this.instances.values()) {
+      const holder = inst._holderEl;
+      if (!holder) continue;
+      const hr = holder.getBoundingClientRect();
+      if (!hr.width) continue;
+      for (const t of inst.terminals) {
+        if (t.isHidden) continue;
+        const cx = hr.left + t.x * z, cy = hr.top + t.y * z;
+        const rad = t.hitRadius * z;
+        if (Math.abs(clientX - cx) > rad || Math.abs(clientY - cy) > rad) continue;
+        const d = Math.hypot(clientX - cx, clientY - cy);
+        if (d < rad && d < bd) { bd = d; best = t; }
+      }
+    }
+    return best;
+  }
+
+  /** 端子命中（面板逻辑坐标）——万用表笔尖定位用 */
+  termAtPanel(px, py) {
+    const c = this.panelToClient(px, py);
+    return this.termAtClient(c.x, c.y);
+  }
+
   /** ★ 刷新所有导线路径（行高变化/器件移动/删除后调用）。
    *  按每根导线自身的创建模式（w.mode）决定，而不是全局当前敷设模式：
    *    auto 导线（含场景导线）路径始终由端子实时位置推导——有线槽 = 线槽路由、无线槽 = 悬链线，

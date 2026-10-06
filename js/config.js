@@ -202,9 +202,11 @@ export class ComponentDefinition {
             fault,
             // 条目级扩展字段透传（配置驱动）：
             // state（得电状态键）/ tonState / tofState（延时显示键）/ delayForceKey（延时计时动作源的强制信号键，仅计时用不写 state）
+            // sensors：tripKey（该组过载输出键）/ setting（该组整定值，数值或 params 键名）/ tripDelay（该组延时，数值或 params 键名）
             // （条目级 voltage/voltageType/pickup/dropout/ton/tof 旧设计残留已废弃：线圈电气属性统一走器件级
             //   params.coilVoltage/coilType/pickup/dropout/delayTime，写这些条目级字段不生效）
             state: e.state, tonState: e.tonState, tofState: e.tofState, delayForceKey: e.delayForceKey,
+            tripKey: e.tripKey, setting: e.setting, tripDelay: e.tripDelay,
           });
           if (e.voltage !== undefined || e.voltageType !== undefined || e.pickup !== undefined ||
               e.dropout !== undefined || e.ton !== undefined || e.tof !== undefined) {

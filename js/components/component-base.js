@@ -57,7 +57,9 @@ export class ComponentInstance {
           fault: e.fault,
           // 条目级扩展字段（配置驱动）透传：
           // state（得电状态键）/ tonState / tofState（延时显示键）/ delayForceKey（延时计时动作源的强制信号键，仅计时用不写 state）
+          // sensors：tripKey（该组过载输出键）/ setting（该组整定值，数值或 params 键名）/ tripDelay（该组延时，数值或 params 键名）
           state: e.state, tonState: e.tonState, tofState: e.tofState, delayForceKey: e.delayForceKey,
+          tripKey: e.tripKey, setting: e.setting, tripDelay: e.tripDelay,
         };
         this.pairEntries[cat].push(entry);
       }

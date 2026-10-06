@@ -5,15 +5,16 @@
  *
  * 电气模型（scan 单次扫描，触点滞后一 tick 惯例）：
  *   位置触发 = 绑定气缸（relative-position 能力）∧ |当前位置 − detect| ≤ tolerance（默认 0.05）
- *   动作态   = 位置触发 ∨ 强制（zones 点击 (55,40) 热区 toggle forced，手动动作）
- *   动作态键 params.actuated 驱动：
- *     NO 触点 when:"actuated"（动作闭合）/ NC 触点 when:"!actuated"（动作断开）
- *     动作图（行程开关_动作.png）bind:"actuated" 显隐；强制红字 bind:"forced"。
+ *   params.actuated = 位置触发（纯物理量，写回面板参数容器）
+ *   动作态 = 位置触发 ∨ 强制（forced 由 zones 点击 (55,40) 热区 toggle）
+ *     —— 这个"取或"由**配置**在 when/bind 表达式里写（"actuated || forced"），器件类不认识 forced：
+ *     NO 触点 when:"actuated || forced" / NC 触点 when:"!(actuated || forced)"
+ *     动作图 bind:"actuated || forced" / 复位图 bind:"!(actuated || forced)" / 强制红字 bind:"forced"
  *   无供电端子（纯机械触点：NO 一对 + NC 一对，dir down）；无报警（机械式无电气故障判定）。
  *
  * 参数（配置驱动）：target（bind 绑定气缸）/ unit（动态下拉 = 绑定气缸单元 label）/
  *   detect（检测位置 0~1，右键可调）/ tolerance（到位容差，默认 0.05）/
- *   forced（强制键，zones toggle）/ actuated（运行时动作态键）。
+ *   forced（强制键，zones toggle，配置表达式引用）/ actuated（位置触发运行时键）。
  */
 import { ComponentInstance } from './component-base.js';
 // 全局单例用别名 GS：scan(G, ctx) 的参数 G 是并查集，会遮蔽模块级 G（GS.panel.instances 查绑定目标）
@@ -35,10 +36,9 @@ export class LimitSwitchInstance extends ComponentInstance {
       }
     }
 
-    // ② 动作态 = 位置触发 ∨ 强制（zones 点击手动动作）
-    const act = atPos || !!this.params.forced;
-    const changed = this.params.actuated !== act;
-    this.params.actuated = act;
+    // ② 位置触发状态键（纯物理量）；"∨ 强制"由配置的 when/bind 表达式组合，器件类不引用具体键名
+    const changed = this.params.actuated !== atPos;
+    this.params.actuated = atPos;
     return changed;   // engine 按返回值集中 refreshDisplay（动作图/强制字样显隐即时刷新）
   }
 }

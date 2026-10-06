@@ -244,6 +244,15 @@ body.panel-dragging .term-dot:hover { background: transparent !important; }
   background: var(--term-hover-probed, rgba(74,144,217,0.45)) !important;
   box-shadow: 0 0 0 3px var(--term-hover-ring, rgba(74,144,217,0.4));
 }
+/* 端子提示浮层（鼠标悬停端子 / 万用表笔尖处；固定在视口，不随面板缩放与滚动；由 app.js 定位） */
+#termTip {
+  position: fixed; left: 0; top: 0; display: none;
+  z-index: 10060; pointer-events: none;
+  padding: 3px 8px; border-radius: 6px;
+  background: rgba(45, 45, 45, 0.95); color: #fff;
+  font-size: 12px; line-height: 1.4; white-space: nowrap;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35);
+}
 /* 统一告警栈条目（引擎按 key 动态增删；背景色由告警类型内联指定） */
 .alert-item {
   padding: 8px 18px;

@@ -14,7 +14,11 @@
  *     delayForceKey 延时计时动作源的强制信号键（仅计时用，不写 state）
  *   （条目级 voltage/voltageType/pickup/dropout/ton/tof 为旧设计残留，已废弃不生效——
  *     线圈电气属性一律写器件级 params，见上。）
- *   热继电器过载判定（sensors 条目支路电流 > 整定值 → 延时 → tripped，整体单键）；
+ *   热继电器过载判定（逐 sensors 条目独立，条目级字段）：
+ *     tripKey     该组过载闭锁写到哪个 params 键（缺省 'tripped'）
+ *     setting     该组整定电流 A（数值字面量，或 params 键名引用；缺省回退 params.heaterSetting；仍无 → 不判定）
+ *     tripDelay   该组动作延时 秒（数值字面量，或 params 键名引用；缺省回退 params.tripDelay；仍无 → 8s）
+ *   （组间互不影响：各自整定/计时/输出/闭锁；共用同一 tripKey = 逻辑或；复位按 zone.state 逐组）
  *   触点闭合情况全部由配置 when/timing 驱动（基类求值器），本类不覆盖 closedContactPairs。
  */
 import { ComponentInstance } from './component-base.js';
@@ -29,7 +33,7 @@ export class CoilDeviceInstance extends ComponentInstance {
     this._tofStart = new Map();        // entryKey → ms（断电延时复位计时起点）
     this._tonActive = new Map();       // entryKey → bool（通电延时动作：得电 && 计时满）
     this._tofActive = new Map();       // entryKey → bool（断电延时保持：得电立刻 true，失电计时满复位）
-    this._ovStart = null;              // 热继电器过载计时起点（整体）
+    this._ovStartMap = new Map();      // entryKey → ms（每组热元件独立的过载计时起点）
     this._nowMs = 0;                   // 本 tick 电气仿真时间（ctx.tickMs；延时/过载计时用，后台节流不失真）
   }
 
@@ -62,56 +66,101 @@ export class CoilDeviceInstance extends ComponentInstance {
       }
     }
 
-    // 热继电器过载判定（配置了 sensors 条目即启用；tripped 保持到手动复位）
-    if (this.pairEntries.sensors.length && !this.params.tripped) changed = this._tickOverload(G, ctx) || changed;
+    // 热继电器过载判定（配置了 sensors 条目即启用；各组独立计时/闭锁，保持到逐组复位）
+    if (this.pairEntries.sensors.length) changed = this._tickOverload(G, ctx) || changed;
     return changed;   // engine 按返回值集中 refreshDisplay
   }
 
-  /** 热继电器动作延时毫秒数（params.tripDelay 配置，缺省 8 秒） */
+  /** 热继电器动作延时毫秒数（器件级缺省：params.tripDelay，未配/≤0 → 8 秒） */
   _tripDelayMs() {
     const d = this.params && this.params.tripDelay;
     return (d && d > 0) ? d * 1000 : 8000;
   }
 
   /**
-   * 热继电器过载判定（每 tick，数值层电流）：
-   * 任一 sensors 条目支路电流 |I| > 整定电流（params.heaterSetting）→ 过载持续计时
-   * → tripDelay 秒后 state.tripped = true（热触点动作，保持到手动复位）。
-   * sensors 接在哪就测哪的电流（物理量），无电机匹配启发式。
+   * 条目级数值解析（setting/tripDelay 通用）：
+   *   number → 字面量；string → params 同名键引用；其余/引用缺失 → fallbackKey 指定的 params 键 → null。
    */
-  _tickOverload(G, ctx) {
-    const tripMs = this._tripDelayMs();
-    if (tripMs <= 0) return false;
-    const solve = ctx && ctx.solve;
-    if (!solve) return false;
-    const setting = this.params.heaterSetting !== undefined ? this.params.heaterSetting : Infinity;
-    let overloaded = false;
-    for (const e of this.pairEntries.sensors) {
-      for (let i = 0; i < e.pairs.length; i++) {
-        const cur = solve.currentOf(this, 'sensor:' + e.key + ':' + i);
-        if (cur && Math.hypot(cur.re, cur.im) > setting) { overloaded = true; break; }
-      }
-      if (overloaded) break;
+  _entryNum(e, field, fallbackKey) {
+    const v = e[field];
+    if (typeof v === 'number' && !Number.isNaN(v)) return v;
+    if (typeof v === 'string') {
+      const r = this.params[v];
+      if (typeof r === 'number' && !Number.isNaN(r)) return r;
     }
-    if (!overloaded) { this._ovStart = null; return false; }
-    const now = this._nowMs;   // 仿真时间（tick 计数，后台节流不失真）
-    if (this._ovStart === null) this._ovStart = now;
-    if (now - this._ovStart >= tripMs) {
-      this.params.tripped = true;   // 参数容器（热触点动作，保持到手动复位）
-      this._ovStart = null;
-      return true;
+    if (fallbackKey) {
+      const f = this.params[fallbackKey];
+      if (typeof f === 'number' && !Number.isNaN(f)) return f;
     }
-    return false;
+    return null;
   }
 
-  /** 热继电器复位（zones action="reset" 点击）：热触点复位 + 过载计时清零 */
+  /** 该组整定电流 A：条目 setting（数值或 params 键名）→ params.heaterSetting → Infinity（不判定过载） */
+  _entrySetting(e) {
+    const v = this._entryNum(e, 'setting', 'heaterSetting');
+    return v === null ? Infinity : v;
+  }
+
+  /** 该组动作延时 ms：条目 tripDelay（数值或 params 键名）→ params.tripDelay（缺省 8s） */
+  _entryTripDelayMs(e) {
+    const v = this._entryNum(e, 'tripDelay', null);
+    return (v !== null && v > 0) ? v * 1000 : this._tripDelayMs();
+  }
+
+  /**
+   * 热继电器过载判定（每 tick，数值层电流，**逐 sensors 条目独立**）：
+   * 该组任一对 |I| > 该组整定值 → 该组过载持续计时 → 该组 tripDelay 秒后 params[tripKey] = true（闭锁）。
+   * 组间互不影响；共用同一 tripKey 时即逻辑或（任一置真）。sensors 接在哪就测哪（物理量），无电机匹配启发式。
+   */
+  _tickOverload(G, ctx) {
+    const solve = ctx && ctx.solve;
+    if (!solve) return false;
+    const now = this._nowMs;   // 仿真时间（tick 计数，后台节流不失真）
+    let changed = false;
+    for (const e of this.pairEntries.sensors) {
+      const key = e.tripKey || 'tripped';
+      const delayMs = this._entryTripDelayMs(e);
+      let overloaded = false;
+      if (delayMs > 0 && !this.params[key]) {   // 已闭锁的组不再计时（等复位）
+        const setting = this._entrySetting(e);
+        for (let i = 0; i < e.pairs.length; i++) {
+          const cur = solve.currentOf(this, 'sensor:' + e.key + ':' + i);
+          if (cur && Math.hypot(cur.re, cur.im) > setting) { overloaded = true; break; }
+        }
+      }
+      if (!overloaded) { this._ovStartMap.delete(e.key); continue; }   // 不过载 / 已闭锁 / 无延时 → 计时清零
+      if (!this._ovStartMap.has(e.key)) this._ovStartMap.set(e.key, now);
+      if (now - this._ovStartMap.get(e.key) >= delayMs) {
+        this.params[key] = true;   // 该组热触点动作（保持到逐组复位）
+        this._ovStartMap.delete(e.key);
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  /**
+   * 热继电器复位（zones action="reset" 点击）：**按 zone.state 逐组复位**——
+   *   zone.state = 某组 tripKey → 只复位该组（该键置 false + 该组过载计时清零）；
+   *   未配 state（旧配置）→ 兼容回退：复位全部组的 tripKey + 缺省键 'tripped'，并清全部计时。
+   */
   handleZoneAction(id, action, phase) {
     super.handleZoneAction(id, action, phase);   // 基类通用 zone.state 绑定（强制热区 toggle 等）
-    if (action === 'reset' && phase === 'down' && this.params.tripped) {
-      this.params.tripped = false;
-      this._ovStart = null;
-      this.refreshDisplay();
+    if (action !== 'reset' || phase !== 'down') return;
+    const z = this.definition.zones && this.definition.zones.find(z => z.id === id);
+    const state = (z && z.state) ? z.state : null;
+    const groups = this.pairEntries.sensors;
+    let changed = false;
+    if (state) {
+      if (this.params[state]) { this.params[state] = false; changed = true; }   // 只复位该组
+      for (const e of groups) if ((e.tripKey || 'tripped') === state) this._ovStartMap.delete(e.key);
+    } else {
+      const keys = new Set(groups.map(e => e.tripKey || 'tripped'));
+      keys.add('tripped');   // 旧配置缺省键
+      for (const k of keys) if (this.params[k]) { this.params[k] = false; changed = true; }
+      this._ovStartMap.clear();
     }
+    if (changed) this.refreshDisplay();
   }
 
   /** 应用单线圈得电状态（按条目 state 键写；上升沿：ton 计时开始 + tof 立刻动作；下降沿：ton 立刻复位 + tof 开始复位计时） */
@@ -181,7 +230,7 @@ export class CoilDeviceInstance extends ComponentInstance {
       this._tonActive.delete(e.key);
       this._tofActive.delete(e.key);
     }
-    this._ovStart = null;   // 过载计时清零（tripDelay 参数变化）
+    this._ovStartMap.clear();   // 过载计时清零（整定/延时参数变化）
     const keys = this.definition.bindKeys();
     for (const e of this.pairEntries.loads) {
       if (e.tonState && keys.includes(e.tonState)) this.params[e.tonState] = false;

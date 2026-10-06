@@ -22,7 +22,7 @@ export class Terminal {
     this.cfgY       = td.y;
     this.dir        = td.dir;          // 出线方向: up/down/left/right
     this.type       = td.type || 'electrical';
-    this.tip        = td.tip || null;   // 排故显示信息（无则用 id）
+    this.tip        = td.tip || null;   // 端子提示文字（悬停/表笔笔尖显示 + 排故显示名；无则用 id）
     this.isHidden   = !!td.isHidden;    // 隐藏端子（不可见/不可点/不可测，但实例化参与图构建）
     // 允许接线数：气孔强制 1 根气管（现实规律，不需要配置数量）；
     // 电路端子：0 = 只能测量不可接线；未配置 = 主配置 rules.defaultConnectLimit（缺省 2）
