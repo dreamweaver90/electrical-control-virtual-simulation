@@ -125,7 +125,8 @@
     "electrical/terminal_block_i1o2_12.json",
     "electrical/resistor.json",
     "electrical/resistor_3p.json",
-    "electrical/delixi_ton.json"
+    "electrical/delixi_ton.json",
+    "electrical/delixi_tof.json"
   ],
   "scenes": [
     "scene1.json",
