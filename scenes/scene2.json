@@ -173,42 +173,6 @@
     {
       "from": [
         1,
-        "main_no_1_d"
-      ],
-      "to": [
-        2,
-        "main_no_2_u"
-      ],
-      "color": "#3498db",
-      "media": "electrical"
-    },
-    {
-      "from": [
-        1,
-        "main_no_2_d"
-      ],
-      "to": [
-        7,
-        "main_no_1_u"
-      ],
-      "color": "#e74c3c",
-      "media": "electrical"
-    },
-    {
-      "from": [
-        7,
-        "main_no_1_u"
-      ],
-      "to": [
-        2,
-        "main_no_1_u"
-      ],
-      "color": "#e74c3c",
-      "media": "electrical"
-    },
-    {
-      "from": [
-        1,
         "main_no_3_d"
       ],
       "to": [
@@ -537,6 +501,42 @@
       "media": "electrical",
       "label": "反转NC",
       "labelSide": "start"
+    },
+    {
+      "from": [
+        1,
+        "main_no_2_d"
+      ],
+      "to": [
+        2,
+        "main_no_2_u"
+      ],
+      "color": "#e74c3c",
+      "media": "electrical"
+    },
+    {
+      "from": [
+        1,
+        "main_no_2_d"
+      ],
+      "to": [
+        7,
+        "main_no_1_u"
+      ],
+      "color": "#e74c3c",
+      "media": "electrical"
+    },
+    {
+      "from": [
+        1,
+        "main_no_1_d"
+      ],
+      "to": [
+        2,
+        "main_no_1_u"
+      ],
+      "color": "#3498db",
+      "media": "electrical"
     }
   ]
 }
