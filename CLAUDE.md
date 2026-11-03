@@ -67,7 +67,7 @@ python -m http.server 8000
 ├── components/<id>.json    ← 每器件一个配置文件
 └── js/                     ← ES module
     ├── globals.js          ← G 全局单例容器
-    ├── utils.js            ← DIR、degToRad、pointToSegment、hashToNum、hexToRgba（#rrggbb → rgba，主题注入用）
+    ├── utils.js            ← DIR、degToRad、pointToSegment、roundCorners（手动敷设拐点圆角化）、hashToNum、hexToRgba（#rrggbb → rgba，主题注入用）
     ├── config.js           ← ConfigLoader + ComponentDefinition
     ├── terminal.js         ← Terminal（panelPos/claimOffset/exitPoint）
     ├── wire.js             ← Wire（path/offset/mode/label 线标/media 介质）
@@ -209,6 +209,7 @@ python -m http.server 8000
 - **scan 单次执行**：每 tick 一遍，状态变化下一周期生效（不迭代，防震荡）；
 - **时间基准三套并用，不得混入第四种**：①电气时序（线圈 ton/tof、热继电器 tripDelay、熔断器 fuseTime、电能表积分）= 引擎 `ctx.tickMs`（tick 计数 × `simulation.refreshIntervalMs`，engine 下发；触点 closeDelay/openDelay 用 `_contactTicks`）；②机械积分（气缸/滑台位置）= 墙钟真实 dt（Date.now）；③UI 计时（短路跳闸告警 3 秒）= 墙钟。改主配置 `simulation.refreshIntervalMs` 时 engine tickMs 与电机 `_tickSpeed` 的 dt 同读此配置，天然一致；
 - **万用表 destroy-recreate**：destroy 必须移除 document 级监听器；
-- **导线路径**：`w.mode==='auto'` 的路径始终可由端子位置推导（`_refreshAllWirePaths` 按 w.mode 重算）；manual 保持轨迹；
+- **导线路径**：`w.mode==='auto'` 的路径始终可由端子位置推导（`_refreshAllWirePaths` 按 w.mode 重算）；manual = 用户逐个点下的**拐点折线**（`w.path` 存拐点原始坐标，保持不动，仅端点随器件拖动）；
+- **手动敷设（拐点式）**：选中起点端子 → 移动鼠标橡皮筋预览 → **空白处左键落一个拐点**（`WiringManager.onPanelClick`，拐点不画标记）→ 继续落点 → **点第二个端子完成**；右键/Backspace 撤销上一拐点、ESC 取消；渲染/悬停命中/线标采样三处统一走 `utils.roundCorners(w.path, wiring.electrical.cornerRadius)` 圆角化（半径按相邻段长收敛，缺省 18px）；`PanelManager.isCatenaryWire(w)` 统一判定贝塞尔悬链线（manual 恒折线，避免 4 点折线被误当悬链线）；
 - **电路/气路端子**：`Terminal.type`（electrical/pneumatic）不可混接；
 - CSS 全在 style.css，类名 `-` 分隔；SVG 用器件全尺寸 viewBox 对齐端子坐标；`.comp-img-layer` 定位补偿 (+6/+4) 与 term-dot 一致。

@@ -178,13 +178,22 @@ export class App {
       reader.readAsText(f, 'utf-8');
     });
 
-    // ESC & 空白取消（自由布局平移后的 click 忽略）
+    // ESC 取消 & 空白左键：手动敷设时 = 落下一个拐点；否则 = 取消选中（自由布局平移后的 click 忽略）
     pw.addEventListener('click', e => {
       if (G.panel && G.panel._panMoved) return;
       if (e.target.closest('.component-card')) return;
+      if (this.wiring.onPanelClick(e)) return;   // ★ 手动敷设拐点布线：空白处左键 = 落拐点
       if (e.target === pw || e.target.closest('.panel, .panel-row')) this.wiring.cancelSelection();
     });
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') this.wiring.cancelSelection(); });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { this.wiring.cancelSelection(); return; }
+      // 手动敷设中：Backspace / Delete = 撤销上一个拐点（输入框内不拦截）
+      if ((e.key === 'Backspace' || e.key === 'Delete') && !e.ctrlKey && !e.metaKey && this.wiring.isManualPlacing) {
+        const t = e.target;
+        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+        if (this.wiring.undoWaypoint()) e.preventDefault();
+      }
+    });
 
     // 导线悬停 & 双击删除（万用表/排故模式禁止）
     pw.addEventListener('mousemove', e => {
@@ -194,11 +203,13 @@ export class App {
         this.hideTermTip('hover');
         return;
       }
-      const r = this.wiring.checkWireHover(e.clientX, e.clientY);
-      pw.style.cursor = r ? 'pointer' : '';
+      // 手动敷设布线中：不做导线悬停高亮（否则其它导线被淡化、端子提示被导线抢占 → 难找第二个端子）
+      const placing = this.wiring.isManualPlacing;
+      const r = placing ? null : this.wiring.checkWireHover(e.clientX, e.clientY);
+      pw.style.cursor = placing ? 'crosshair' : (r ? 'pointer' : '');
       // ★ 导线/气管浮于器件上：抑制器件的拖动手光标（内联覆盖 .wired 的 grab），未命中恢复
       const card = e.target.closest('.component-card');
-      if (this._wireHoverCard && this._wireHoverCard !== card) { this._wireHoverCard.style.cursor = ''; this._wireHoverCard = null; }
+      if (this._wireHoverCard && (placing || this._wireHoverCard !== card)) { this._wireHoverCard.style.cursor = ''; this._wireHoverCard = null; }
       if (card && r && card.classList.contains('wired')) { card.style.cursor = 'pointer'; this._wireHoverCard = card; }
 
       // ★ 端子提示：连线优先（命中导线/气管时不显示端子 tip）；万用表打开时由笔尖驱动，悬停不抢占
@@ -238,6 +249,8 @@ export class App {
     pw.addEventListener('contextmenu', e => {
       if (this._isLocked()) return;
       if (e.target.closest('.component-card')) return;
+      // 手动敷设布线中：右键 = 撤销上一个拐点（不弹线标面板；点第二个端子即完成布线）
+      if (this.wiring.isManualPlacing) { e.preventDefault(); this.wiring.undoWaypoint(); return; }
       const wid = this.wiring.checkWireHover(e.clientX, e.clientY);
       if (!wid) return;
       e.preventDefault();

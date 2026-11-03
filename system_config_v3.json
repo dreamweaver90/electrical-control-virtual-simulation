@@ -37,7 +37,8 @@
       ],
       "defaultColor": "#e74c3c",
       "labelFontSize": 12,
-      "labelGap": 15
+      "labelGap": 15,
+      "cornerRadius": 18
     },
     "pneumatic": {
       "thickness": 17,

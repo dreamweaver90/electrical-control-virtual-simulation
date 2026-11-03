@@ -4,7 +4,19 @@
  * 每根导线连接两个端子，存储路径点数组和渲染属性。
  */
 
+import { G } from './globals.js';
+
 let _wireSeq = 0;
+
+/**
+ * 手动敷设导线的拐点圆角半径（px）：主配置 `wiring.electrical.cornerRadius`（缺省 18）。
+ * 渲染 / 悬停命中 / 线标贴线三处共用同一取值入口，改配置即时生效（不在 Wire 上冻结）。
+ */
+export function wireCornerRadius() {
+  const e = (G.config && G.config.wiring && G.config.wiring.electrical) || {};
+  const v = Number(e.cornerRadius);
+  return Number.isFinite(v) && v >= 0 ? v : 18;
+}
 
 export class Wire {
   /**
@@ -24,7 +36,10 @@ export class Wire {
     this.mode = mode;
     this.media = media;
 
-    /** 路径点数组（面板坐标系） */
+    /** 路径点数组（面板坐标系）。
+     *  manual = **拐点原始坐标**（端子起终点 + 用户逐个点下的拐点），渲染/命中/线标时用
+     *           utils.roundCorners 按 wiring.electrical.cornerRadius 现场圆角化；
+     *  auto   = 线槽路由折线 / 悬链线 4 点贝塞尔控制点。 */
     this.path = [];
 
     /** 45° 出线偏移方向（仅自动有槽模式使用） */

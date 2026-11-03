@@ -4,6 +4,8 @@
 import { G } from './globals.js';
 import { ComponentFactory } from './components.js';
 import { invalidateGraphCache } from './graph.js';   // 实例增删 → 连通图缓存失效
+import { roundCorners } from './utils.js';
+import { wireCornerRadius } from './wire.js';       // 手动敷设拐点圆角半径（配置取值统一入口）
 
 /** 颜色明暗调整（气管渐变描边用）：amt<0 变暗 / amt>0 变亮；hex 或 #hex */
 export function shadeColor(hex, amt) {
@@ -18,17 +20,18 @@ export function shadeColor(hex, amt) {
 /**
  * 线标渲染辅助（纯几何，可独立测试）：
  * 把导线实际绘制路径采样为折线点列 ——
+ *   手动敷设（拐点折线）：按 wiring.electrical.cornerRadius 圆角化后直取（与画布所见同一条曲线）；
  *   有线槽 auto 折线：直取路径点；
  *   悬链线（非有线槽且恰 4 点，绘制为三次贝塞尔）：按 t 采样 24 段；
- *   直线/手动密集轨迹：直取（手动绘制是二次贝塞尔链，点密时折线近似一致）。
+ *   其余直线：直取。
  * @returns {Array<{x,y}>|null} 点数 < 2 返回 null
  */
 export function sampleWirePath(w, useDuct) {
   const pts = w.path;
   const n = pts ? pts.length : 0;
   if (n < 2) return null;
+  if (w.mode === 'manual') return roundCorners(pts, wireCornerRadius());   // 手动导线：圆角折线（文字贴圆角走）
   if (w.mode === 'auto' && useDuct && w.media !== 'pneumatic') return pts;   // 有线槽导线折线（气管恒悬链线）
-  if (n === 2) return pts;                               // 直线
   if (n === 4) {                                         // 悬链线：三次贝塞尔采样
     const out = [], STEPS = 24;
     for (let i = 0; i <= STEPS; i++) {
@@ -40,7 +43,7 @@ export function sampleWirePath(w, useDuct) {
     }
     return out;
   }
-  return pts;                                            // 手动轨迹（折线近似）
+  return pts;                                            // 直线
 }
 
 /**
@@ -456,7 +459,7 @@ export class PanelManager {
   /** ★ 刷新所有导线路径（行高变化/器件移动/删除后调用）。
    *  按每根导线自身的创建模式（w.mode）决定，而不是全局当前敷设模式：
    *    auto 导线（含场景导线）路径始终由端子实时位置推导——有线槽 = 线槽路由、无线槽 = 悬链线，
-   *    器件增删导致行高变化后自动跟随端子；manual 导线是手绘轨迹，保持不动。
+   *    器件增删导致行高变化后自动跟随端子；manual 导线是用户逐个点下的拐点折线，保持不动（端点随器件拖动）。
    *  （修复：场景导线以 auto 创建，若当前敷设模式为"手动"，旧逻辑跳过重算 → 行高变化后导线脱离端子）
    *  onlyInst：只重算与该实例相连的导线（动画端子每 tick 移动时用——只受影响连接线，避免全盘重算+layout 抖动） */
   _refreshAllWirePaths(onlyInst) {
@@ -501,7 +504,7 @@ export class PanelManager {
     this._redrawWires();
   }
 
-  /** 手动导线窗口缩放重映射：端点重取端子实时位置，中间轨迹点 x 按新旧宽度比例缩放 */
+  /** 手动导线窗口缩放重映射：端点重取端子实时位置，中间拐点 x 按新旧宽度比例缩放 */
   _remapManualWires() {
     const wm = G.wiring; if (!wm) return;
     for (const w of wm.wires.values()) {
@@ -564,15 +567,31 @@ export class PanelManager {
     }
   }
 
+  /**
+   * 该导线是否按三次贝塞尔（悬链线 4 点）绘制：
+   *   手动敷设 = 拐点折线（渲染时圆角化）——恒不贝塞尔；
+   *   自动 + 有线槽（电路）= 线槽路由折线；
+   *   其余（气管恒悬链线、无线槽自动敷设）= 悬链线。
+   * 渲染 _strokePath / 悬停命中 / 线标采样三处共用，避免"4 点折线被当成悬链线"。
+   */
+  isCatenaryWire(w) {
+    if (!w || w.mode === 'manual') return false;   // 手动敷设 = 拐点折线（渲染时圆角化）
+    if (w.path.length !== 4) return false;         // 悬链线恒 4 点
+    if (w.media === 'pneumatic') return true;      // 气管恒悬链线
+    return !(w.mode === 'auto' && this.useDuct);   // 有线槽电路 = 线槽折线；无线槽 = 悬链线
+  }
+
   /** 只构建路径不落笔（气管多层描边复用同一路径；气管恒贝塞尔悬链线，不看线槽布局） */
   _strokePath(ctx, w) {
     ctx.beginPath();
     ctx.moveTo(w.path[0].x, w.path[0].y);
-    if (w.mode === 'auto' && this.useDuct && w.media !== 'pneumatic') {
-      for (let i = 1; i < w.path.length; i++) ctx.lineTo(w.path[i].x, w.path[i].y);
-    } else if (w.path.length === 2) ctx.lineTo(w.path[1].x, w.path[1].y);
-    else if (w.path.length === 4) ctx.bezierCurveTo(w.path[1].x, w.path[1].y, w.path[2].x, w.path[2].y, w.path[3].x, w.path[3].y);
-    else { for (let i = 1; i < w.path.length - 1; i++) { const cx = (w.path[i].x + w.path[i + 1].x) / 2, cy = (w.path[i].y + w.path[i + 1].y) / 2; ctx.quadraticCurveTo(w.path[i].x, w.path[i].y, cx, cy); } ctx.lineTo(w.path[w.path.length - 1].x, w.path[w.path.length - 1].y); }
+    if (this.isCatenaryWire(w)) {
+      ctx.bezierCurveTo(w.path[1].x, w.path[1].y, w.path[2].x, w.path[2].y, w.path[3].x, w.path[3].y);
+      return;
+    }
+    // 手动敷设导线：拐点按 wiring.electrical.cornerRadius 现场圆角化（拐点本身不画任何标记）
+    const pts = w.mode === 'manual' ? roundCorners(w.path, wireCornerRadius()) : w.path;
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
   }
 
   /** 线标渲染：导线两端各一个，文字**顺着导线走向**逐字符贴线绘制（随折点/悬链线弯折），不翻转（两头同向阅读）。

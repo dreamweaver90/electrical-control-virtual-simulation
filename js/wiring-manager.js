@@ -4,11 +4,11 @@
  * 管理所有导线、端子选中状态机、三种接线模式、导线悬停与删除。
  */
 
-import { Wire } from './wire.js';
+import { Wire, wireCornerRadius } from './wire.js';
 import { G } from './globals.js';
 import { isTerminalLive, invalidateGraphCache } from './graph.js';
 import { isTerminalPressurized } from './pneumatic.js';
-import { hashToNum, pointToSegment } from './utils.js';
+import { hashToNum, pointToSegment, roundCorners } from './utils.js';
 
 export class WiringManager {
   constructor() {
@@ -29,7 +29,7 @@ export class WiringManager {
     this.currentPneuColor = (G.config && G.config.wiring && G.config.wiring.pneumatic &&
       G.config.wiring.pneumatic.defaultColor) || '#2f6fd0';
 
-    /** 临时预览路径（手动轨迹或悬链线） */
+    /** 临时预览路径（手动拐点折线 / 悬链线） */
     this.tempPath = [];
 
     /** 当前悬停的导线 ID */
@@ -38,7 +38,10 @@ export class WiringManager {
     // 内部状态
     this._mouseH      = null;
     this._previewMode = null;   // "catenary" | null
-    this._trail       = [];     // 手动模式轨迹点
+    /** 手动敷设：已落定的拐点（首点 = 起点端子坐标），空数组 = 不在布线中 */
+    this._waypoints   = [];
+    /** 手动敷设：当前光标位置（预览末段橡皮筋的端点） */
+    this._cursor      = null;
   }
 
   /** 切换接线模式 */
@@ -53,6 +56,11 @@ export class WiringManager {
   /** 当前是否为自动有槽模式 */
   get isDuctMode() {
     return this.connectMode === 'auto' && G.panel && G.panel.useDuct;
+  }
+
+  /** 是否处于「手动敷设 · 拐点布线」中（已选中起点端子，正在逐个落拐点） */
+  get isManualPlacing() {
+    return !!this.selectedTerminal && this._waypoints.length > 0;
   }
 
   /* ================================================================
@@ -105,12 +113,14 @@ export class WiringManager {
     // 空闲 → 选中端子
     this.selectedTerminal = term;
     term.dotEl && term.dotEl.classList.add('selected');
-    this._setStatus('已选中 ' + termId + '，请点击另一个端子');
+    this._setStatus(this.connectMode === 'manual' && term.type !== 'pneumatic'
+      ? '已选中 ' + termId + '，点击下一个拐点（左键落点），或直接点第二个端子完成'
+      : '已选中 ' + termId + '，请点击另一个端子');
 
     if (this.connectMode === 'manual') {
-      // 气管恒悬链线：手动轨迹仅电路导线使用
+      // 气管恒悬链线：手动拐点布线仅电路导线使用
       if (term.type === 'pneumatic') this._startCatenaryPreview(term);
-      else this._startManualTrace(term);
+      else this._startWaypointTrace(term);
     } else if (this.connectMode === 'auto' && (!G.panel.useDuct || term.type === 'pneumatic')) {
       // 气路无论有/无线槽都用悬链线预览
       this._startCatenaryPreview(term);
@@ -125,6 +135,8 @@ export class WiringManager {
     }
     this.tempPath = [];
     this._previewMode = null;
+    this._waypoints = [];
+    this._cursor = null;
     this._stopMouseTrack();
     G.panel._redrawWires();
     this._setStatus('就绪');
@@ -148,9 +160,9 @@ export class WiringManager {
   /**
    * 创建一根导线/气管（统一入口：手动点击、场景预接线都走这里）。
    * ① 介质 = 端子类型（electrical/pneumatic），按介质取配置（颜色/粗细）；
-   * ② 路径：电路按当前模式（线槽路由/悬链线/手动轨迹）；气路无论有/无线槽恒悬链线（手动模式保持轨迹）；
+   * ② 路径：电路按当前模式（线槽路由/悬链线/手动拐点折线）；气路无论有/无线槽恒悬链线；
    * ③ 双向绑定端子 connections（容量/重复校验在 onTerminalClick 完成）；
-   * ④ 记录 widthAtDraw（窗口缩放时 manual 轨迹重映射的基准宽度）→ 重绘 + 状态提示。
+   * ④ 记录 widthAtDraw（窗口缩放时 manual 拐点重映射的基准宽度）→ 重绘 + 状态提示。
    * @param {Object} [opts] {media, color}（导入场景时覆盖当前选色/介质）
    */
   _createWire(t1, t2, opts = {}) {
@@ -161,7 +173,7 @@ export class WiringManager {
     const mode  = media === 'pneumatic' ? 'auto' : this.connectMode;
     const isDuct = this.isDuctMode && media !== 'pneumatic';
     const wire = new Wire(t1, t2, color, wcfg.thickness || 2, mode, media);
-    wire.widthAtDraw = G.panel ? G.panel._pw : 0;   // 绘制基准宽度（窗口缩放时 manual 轨迹重映射用）
+    wire.widthAtDraw = G.panel ? G.panel._pw : 0;   // 绘制基准宽度（窗口缩放时 manual 拐点重映射用）
 
     if (isDuct) {
       wire.offset1 = t1.claimOffset();
@@ -191,13 +203,14 @@ export class WiringManager {
     return wire;
   }
 
-  /** 按当前模式计算路径：气管恒悬链线（不走线槽/不用手动轨迹）；电路=手动轨迹/线槽路由/悬链线 */
+  /** 按当前模式计算路径：气管恒悬链线（不走线槽/不用手动轨迹）；电路=手动拐点折线/线槽路由/悬链线 */
   _computePath(t1, t2, isDuct, wire) {
     if (wire.media === 'pneumatic') return this._catenaryPath(t1.panelPos(), t2.panelPos());
     if (this.connectMode === 'manual') {
-      return (this._trail && this._trail.length > 1)
-        ? this._trail
-        : [t1.panelPos(), t2.panelPos()];
+      // 拐点折线：起点端子实时坐标 + 用户落下的拐点 + 终点端子实时坐标
+      // （_waypoints[0] 只是选端子当时的位置，这里用 t1.panelPos() 取实时值）
+      const mids = this._waypoints.slice(1).map(p => ({ x: p.x, y: p.y }));   // 拷贝：导线路径不引用拐点对象
+      return this._cleanPath([t1.panelPos(), ...mids, t2.panelPos()]);
     }
     if (!isDuct) return this._catenaryPath(t1.panelPos(), t2.panelPos());
     return this._ductRoute(t1, t2, wire);
@@ -334,24 +347,76 @@ export class WiringManager {
     return out;
   }
 
-  /* ---- 手动轨迹 / 悬链线预览 ---- */
+  /* ---- 手动敷设：拐点式布线 / 悬链线预览 ---- */
 
-  _startManualTrace(term) {
+  /**
+   * 手动敷设（电路导线）的拐点布线状态机：
+   *   选中起点端子 → _waypoints = [端子坐标]；移动鼠标实时预览「已落拐点 + 光标」橡皮筋；
+   *   面板空白处左键 = 落一个拐点（onPanelClick）；右键 / Backspace = 撤销上一个拐点（undoWaypoint）；
+   *   左键点第二个端子 = onTerminalClick 走校验 → _createWire 用 _computePath 收尾。
+   * 预览路径已按 wiring.electrical.cornerRadius 圆角化（画布上直接折线连，即所见即所得）。
+   */
+  _startWaypointTrace(term) {
     this._stopMouseTrack();
-    this._trail = [term.panelPos()];
+    this._previewMode = null;
+    this._waypoints = [term.panelPos()];
+    this._cursor = null;
+    this.tempPath = [];
+    // 布线期间不做导线悬停高亮（避免其它导线被淡化/端子提示被导线抢占，找第二个端子时更清楚）
+    if (this.hoveredWireId) { this.hoveredWireId = null; G.panel._redrawWires(); }
     const onMove = e => {
-      const pr = G.panel.panelEl.getBoundingClientRect();
-      const z = G.panel.zoom || 1;   // 缩放适配
-      this._trail.push({
-        x: (e.clientX - pr.left) / z + G.panel.panelEl.scrollLeft / z,
-        y: (e.clientY - pr.top)  / z + G.panel.panelEl.scrollTop  / z,
-      });
-      if (this._trail.length > 300) this._trail = this._trail.filter((_, i) => i % 2 === 0);
-      this.tempPath = this._trail;
+      if (!this.selectedTerminal) return;
+      this._cursor = G.panel.clientToPanel(e.clientX, e.clientY);
+      this._updateWaypointPreview();
       G.panel._redrawWiresSoon();   // mousemove 高频路径：rAF 合帧，每帧最多重画一次
     };
     this._mouseH = onMove;
     document.addEventListener('mousemove', onMove);
+  }
+
+  /** 预览原始折线：已落拐点 + 当前光标（无光标时只有起点，画不出预览也无所谓） */
+  _previewCorners() {
+    const pts = this._waypoints.slice();
+    if (this._cursor) pts.push({ x: this._cursor.x, y: this._cursor.y });
+    return pts;
+  }
+
+  /** 重算预览路径（圆角化后存 tempPath；渲染层按普通折线绘制） */
+  _updateWaypointPreview() {
+    this.tempPath = roundCorners(this._previewCorners(), wireCornerRadius());
+  }
+
+  /**
+   * 面板空白处左键：落一个拐点。
+   * 由 app 的 panelWrapper click 调用（在"点击空白取消选中"之前），返回 true = 已消费本次点击。
+   */
+  onPanelClick(e) {
+    if (!this.isManualPlacing) return false;
+    if (G.panel && G.panel._panMoved) return false;   // 刚拖动平移过：这次 click 是拖动的尾巴
+    const p = G.panel.clientToPanel(e.clientX, e.clientY);
+    const last = this._waypoints[this._waypoints.length - 1];
+    if (Math.hypot(p.x - last.x, p.y - last.y) < 3) return true;   // 原地双击/抖动：忽略
+    this._waypoints.push(p);
+    this._cursor = { x: p.x, y: p.y };
+    this._updateWaypointPreview();
+    G.panel._redrawWires();
+    this._setStatus('已落 ' + (this._waypoints.length - 1) + ' 个拐点，继续点下一个拐点，或点第二个端子完成');
+    return true;
+  }
+
+  /** 撤销上一个拐点（右键 / Backspace）；全部撤完仍保持起点端子选中 */
+  undoWaypoint() {
+    if (!this.isManualPlacing || this._waypoints.length <= 1) return false;
+    this._waypoints.pop();
+    const last = this._waypoints[this._waypoints.length - 1];
+    this._cursor = { x: last.x, y: last.y };
+    this._updateWaypointPreview();
+    G.panel._redrawWires();
+    const n = this._waypoints.length - 1;
+    this._setStatus(n > 0
+      ? '已撤销拐点，当前 ' + n + ' 个拐点'
+      : '已选中起点端子，点击拐点或第二个端子完成');
+    return true;
   }
 
   _startCatenaryPreview(term) {
@@ -436,9 +501,20 @@ export class WiringManager {
     let found = null;
 
     for (const w of this.wires.values()) {
+      if (!w.path || w.path.length < 2) continue;
       const threshold = Math.max(6, ((w.thickness || 5) / 2) + 4);
+      // 粗筛：光标远离包围盒直接跳过（圆角弧恒落在折线包围盒内）→ 避免对每根线都做圆角化
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const p of w.path) {
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
+      }
+      if (px < minX - threshold || px > maxX + threshold ||
+          py < minY - threshold || py > maxY + threshold) continue;
       let hit = false;
-      if (w.path.length === 4) {
+      if (G.panel.isCatenaryWire(w)) {
         // 悬链线：渲染为三次贝塞尔曲线，折线段检测会与曲线偏差（误判/漏判）
         // → 按曲线 16 段采样逐段检测（与渲染同一条曲线，误差 < 1px）
         const STEP = 16;
@@ -449,9 +525,10 @@ export class WiringManager {
           prev = cur;
         }
       } else {
-        for (let i = 1; i < w.path.length; i++) {
-          const seg = w.path;
-          if (pointToSegment(px, py, seg[i - 1].x, seg[i - 1].y, seg[i].x, seg[i].y) < threshold) { hit = true; break; }
+        // 手动导线渲染时拐点已圆角化 → 命中检测必须按同一条圆角曲线（尖角折线在圆角处会偏几像素）
+        const pts = w.mode === 'manual' ? roundCorners(w.path, wireCornerRadius()) : w.path;
+        for (let i = 1; i < pts.length; i++) {
+          if (pointToSegment(px, py, pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y) < threshold) { hit = true; break; }
         }
       }
       if (hit) { found = w.id; break; }
