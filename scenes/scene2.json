@@ -95,6 +95,9 @@
       "params": {
         "coilVoltage": 380,
         "ratedConnection": "Y",
+        "minStartVoltage": 0.4,
+        "balanceTol": 0.1,
+        "phaseTol": 10,
         "ratedPower": 370,
         "powerFactor": 0.8,
         "lockRatio": 6,
